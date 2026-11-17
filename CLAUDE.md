@@ -26,7 +26,7 @@
 1. **Home:** rows of cards (e.g. Continue Watching, Shows, Videos).
 2. **Show page:** the playlist's banner, then its episode list.
 3. **Watch screen:** the YouTube player, plus "next episode" when watching a playlist.
-4. **Parent area:** add and remove videos and playlists. It is protected so the kids can't change the library (protection method still to decide).
+4. **Parent area:** add and remove videos and playlists. It is protected by a grown-up maths question (e.g. "What is 14 × 6?") so the kids can't change the library. Decided 2026-11-17: maths question only, no PIN or secret. Amin accepts the risk that a stranger who finds the address could change the library.
 
 ## Features
 - **Continue Watching:** remembers where the family stopped in each video and episode, and shows it as a row on Home.
@@ -45,16 +45,16 @@
 ## Tech setup
 - **Code:** plain HTML, CSS and JavaScript. No framework and no build step, to keep it simple.
 - **Code lives in:** GitHub repo `PejabatDigital/kankan` (branch `main`).
-- **Hosting:** Cloudflare Pages, deployed from GitHub on every push to `main`. Build command: none. Output folder: `public`.
+- **Hosting:** a Cloudflare **Worker** named `kankann` (Workers static assets, not Pages), deployed from GitHub on every push to `main` via `npx wrangler deploy`. Settings are in `wrangler.jsonc` (its `name` must stay `kankann`).
 - **Folders:**
   - `public/`: the website itself (what Cloudflare serves).
-  - `functions/`: Cloudflare Pages Functions (from Phase 2).
+  - `src/`: the Worker's server code (from Phase 2).
   - `docs/`: design system and mockups. Not served on the website.
 - **Run locally:** `python3 -m http.server 8788 --directory public`, then open http://127.0.0.1:8788 (the YouTube player doesn't work from `file://`).
-- **Server side:** Cloudflare Pages Functions, for the YouTube lookup and saving data.
+- **Server side:** the Cloudflare Worker's own code, for the YouTube lookup and saving data.
 - **Database:** Cloudflare D1, holding the library and Continue Watching progress.
-- **YouTube Data API key:** stored as a Cloudflare secret. Never put it in front-end code or commit it to GitHub.
-- **Web address:** on a kasahkod domain (exact address still to decide).
+- **YouTube Data API key:** Google Cloud project `Kankan`, key restricted to YouTube Data API v3. Stored as the Cloudflare secret `YOUTUBE_API_KEY`. Never put it in front-end code or commit it to GitHub.
+- **Web address:** https://kankan.kasahkod.cc (also https://kankann.amindigital.workers.dev).
 
 ## Build phases
 - **Phase 1 (done 2026-11-17):** the screens (Home, Show page, Watch screen) using a hand-entered list of content (`public/js/library.js`), to get the look and feel right. Continue Watching is saved per browser (localStorage) until Phase 3.
@@ -62,9 +62,6 @@
 - **Phase 3:** library and Continue Watching saved in the database, so every device sees the same thing.
 
 ## Still to decide
-- How the parent area is protected (e.g. a PIN)
-- Exact web address on the kasahkod domain
-- Google Cloud account: Amin to check whether he has one (needed for the YouTube key in Phase 2)
 - Whether to support YouTube channels later
 - Whether the next episode plays automatically when one ends (currently: no, the "Up next" card is highlighted)
 

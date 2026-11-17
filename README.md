@@ -6,8 +6,8 @@ Plain HTML, CSS and JavaScript. No framework, no build step.
 ## Folders
 | Folder | What's in it |
 |---|---|
-| `public/` | The website (what Cloudflare Pages serves) |
-| `functions/` | Cloudflare Pages Functions (from Phase 2) |
+| `public/` | The website (what Cloudflare serves) |
+| `src/` | Worker server code (from Phase 2) |
 | `docs/` | Design system (`DESIGN.md`) and mockups |
 | `CLAUDE.md` | Project brief and decisions |
 
@@ -26,5 +26,6 @@ python3 -m http.server 8788 --directory public
 Then open http://127.0.0.1:8788
 
 ## Deploy
-Cloudflare Pages, connected to this repo. Every push to `main` goes live.
-Build command: none. Output folder: `public`.
+Cloudflare Worker `kankann`, connected to this repo. Every push to `main` goes live (`npx wrangler deploy`, settings in `wrangler.jsonc`).
+
+Live at https://kankan.kasahkod.cc
