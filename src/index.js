@@ -1,0 +1,330 @@
+// KanKan Worker — the server side.
+// Serves the website from public/ and a small API under /api/:
+//   GET    /api/library              everything in KanKan (shows with episodes, single videos)
+//   POST   /api/preview              { url } -> what a pasted YouTube link points to
+//   POST   /api/items                { url, title? } -> add it to KanKan
+//   DELETE /api/items/:id            remove a show or video
+//   POST   /api/items/:id/refresh    re-read a show's episodes from YouTube
+//
+// The YouTube key lives in the Cloudflare secret YOUTUBE_API_KEY and never leaves the server.
+
+const YT = "https://www.googleapis.com/youtube/v3";
+const MAX_EPISODES = 500;
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    try {
+      await ensureSchema(env.DB);
+      return await route(request, env, url);
+    } catch (err) {
+      if (err instanceof UserError) return json({ error: err.message }, err.status);
+      console.error(err);
+      return json({ error: "Something went wrong. Please try again." }, 500);
+    }
+  },
+};
+
+// ---------- Routing ----------
+async function route(request, env, url) {
+  const m = request.method;
+  const p = url.pathname.replace(/\/+$/, "");
+
+  if (p === "/api/library" && m === "GET") return json(await library(env.DB));
+
+  if (p === "/api/preview" && m === "POST") {
+    const { url: link } = await body(request);
+    const found = await lookup(env, parseLink(link));
+    const exists = await env.DB.prepare("SELECT 1 FROM items WHERE id = ?").bind(found.id).first();
+    return json({ ...summary(found), alreadyAdded: !!exists });
+  }
+
+  if (p === "/api/items" && m === "POST") {
+    const { url: link, title } = await body(request);
+    const found = await lookup(env, parseLink(link));
+    const exists = await env.DB.prepare("SELECT 1 FROM items WHERE id = ?").bind(found.id).first();
+    if (exists) throw new UserError("That's already in KanKan.", 409);
+    const name = cleanName(title) || found.title;
+    await saveItem(env.DB, { ...found, title: name }, Date.now());
+    return json({ ok: true, item: summary({ ...found, title: name }) }, 201);
+  }
+
+  const item = p.match(/^\/api\/items\/([\w-]{11,64})(\/refresh)?$/);
+  if (item && m === "DELETE" && !item[2]) {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM episodes WHERE show_id = ?").bind(item[1]),
+      env.DB.prepare("DELETE FROM items WHERE id = ?").bind(item[1]),
+    ]);
+    return json({ ok: true });
+  }
+  if (item && m === "POST" && item[2]) {
+    const row = await env.DB.prepare("SELECT * FROM items WHERE id = ?").bind(item[1]).first();
+    if (!row) throw new UserError("That isn't in KanKan any more.", 404);
+    if (row.kind !== "show") throw new UserError("Only shows can be refreshed.", 400);
+    const found = await lookupPlaylist(env, row.id);
+    // Keep the family's name and description; only the episodes change.
+    await saveItem(env.DB, { ...found, title: row.title, description: row.description }, row.added_at);
+    return json({ ok: true, episodes: found.episodes.length });
+  }
+
+  throw new UserError("Not found.", 404);
+}
+
+// ---------- Database ----------
+let schemaReady = false;
+async function ensureSchema(db) {
+  if (schemaReady) return;
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS items (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,                -- 'show' (playlist) or 'video'
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      channel TEXT NOT NULL DEFAULT '',
+      banner TEXT NOT NULL DEFAULT '',   -- video id whose thumbnail is used as the picture
+      seconds INTEGER NOT NULL DEFAULT 0,
+      embeddable INTEGER NOT NULL DEFAULT 1,
+      added_at INTEGER NOT NULL,
+      refreshed_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS episodes (
+      show_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      video_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      seconds INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (show_id, position)
+    )`),
+  ]);
+  schemaReady = true;
+}
+
+async function library(db) {
+  const [items, eps] = await db.batch([
+    db.prepare("SELECT * FROM items ORDER BY added_at ASC"),
+    db.prepare("SELECT show_id, video_id, title, seconds FROM episodes ORDER BY show_id, position"),
+  ]);
+  const byShow = {};
+  for (const e of eps.results) (byShow[e.show_id] ||= []).push({ id: e.video_id, title: e.title, seconds: e.seconds });
+  const shows = [], videos = [];
+  for (const it of items.results) {
+    if (it.kind === "show") {
+      shows.push({ id: it.id, title: it.title, description: it.description, channel: it.channel, banner: it.banner, episodes: byShow[it.id] || [] });
+    } else {
+      videos.unshift({ id: it.id, title: it.title, channel: it.channel, seconds: it.seconds }); // newest first
+    }
+  }
+  return { shows, videos };
+}
+
+async function saveItem(db, it, addedAt) {
+  const now = Date.now();
+  const stmts = [
+    db.prepare(`INSERT OR REPLACE INTO items (id, kind, title, description, channel, banner, seconds, embeddable, added_at, refreshed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(it.id, it.kind, it.title, it.description || "", it.channel || "", it.banner || "", it.seconds || 0,
+            it.embeddable === false ? 0 : 1, addedAt, now),
+  ];
+  if (it.kind === "show") {
+    stmts.push(db.prepare("DELETE FROM episodes WHERE show_id = ?").bind(it.id));
+    // D1 allows up to 100 values per statement: 5 per episode -> 20 episodes per insert.
+    for (let i = 0; i < it.episodes.length; i += 20) {
+      const chunk = it.episodes.slice(i, i + 20);
+      const sql = "INSERT INTO episodes (show_id, position, video_id, title, seconds) VALUES " + chunk.map(() => "(?, ?, ?, ?, ?)").join(", ");
+      const vals = chunk.flatMap((e, k) => [it.id, i + k, e.id, e.title, e.seconds || 0]);
+      stmts.push(db.prepare(sql).bind(...vals));
+    }
+  }
+  await db.batch(stmts);
+}
+
+// ---------- Understanding pasted links ----------
+// Returns { kind: 'video' | 'show', id } or throws a friendly error.
+function parseLink(raw) {
+  let s = String(raw || "").trim();
+  if (!s) throw new UserError("Paste a YouTube link first.");
+  if (/^[\w-]{11}$/.test(s)) return { kind: "video", id: s };
+  if (/^(PL|UU|OL|FL)[\w-]{10,}$/.test(s)) return { kind: "show", id: s };
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+
+  let u;
+  try { u = new URL(s); } catch { throw new UserError("That doesn't look like a YouTube link."); }
+  const host = u.hostname.toLowerCase().replace(/^(www|m|music)\./, "");
+  const parts = u.pathname.split("/").filter(Boolean);
+  const list = u.searchParams.get("list");
+  const isPlaylist = (id) => id && /^[\w-]{10,}$/.test(id) && !/^(RD|LL|WL)/.test(id); // skip mixes, liked, watch later
+
+  if (host === "youtu.be") {
+    if (isPlaylist(list)) return { kind: "show", id: list };
+    if (/^[\w-]{11}$/.test(parts[0] || "")) return { kind: "video", id: parts[0] };
+    throw new UserError("That doesn't look like a YouTube link.");
+  }
+  if (!["youtube.com", "youtube-nocookie.com"].includes(host)) throw new UserError("That doesn't look like a YouTube link.");
+
+  if (parts[0] === "playlist" && isPlaylist(list)) return { kind: "show", id: list };
+  if (parts[0] === "show" && parts[1]) {
+    const id = parts[1].replace(/^VL/, "");
+    if (isPlaylist(id)) return { kind: "show", id };
+  }
+  if (isPlaylist(list)) return { kind: "show", id: list }; // a video opened from inside a playlist
+  if (parts[0] === "watch" && /^[\w-]{11}$/.test(u.searchParams.get("v") || "")) return { kind: "video", id: u.searchParams.get("v") };
+  if (["shorts", "live", "embed", "v"].includes(parts[0]) && /^[\w-]{11}$/.test(parts[1] || "")) return { kind: "video", id: parts[1] };
+  if (parts[0] && (parts[0].startsWith("@") || ["channel", "c", "user"].includes(parts[0]))) {
+    throw new UserError("That's a YouTube channel. KanKan can add videos and playlists, but not whole channels yet.");
+  }
+  throw new UserError("We couldn't find a video or playlist in that link.");
+}
+
+// ---------- YouTube lookups ----------
+async function yt(env, path, params) {
+  if (!env.YOUTUBE_API_KEY) throw new UserError("The YouTube key isn't set up in Cloudflare yet.", 500);
+  const u = new URL(`${env.YT_API_BASE || YT}/${path}`);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  u.searchParams.set("key", env.YOUTUBE_API_KEY);
+  const r = await fetch(u);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const reason = data?.error?.errors?.[0]?.reason || "";
+    console.error("YouTube API error", r.status, reason);
+    if (reason === "quotaExceeded") throw new UserError("YouTube's daily lookup limit has been reached. Please try again tomorrow.", 503);
+    if (r.status === 404 || reason === "playlistNotFound") throw new UserError("We couldn't find that on YouTube. It may be private or removed.", 404);
+    throw new UserError("YouTube didn't answer properly. Please try again in a moment.", 502);
+  }
+  return data;
+}
+
+function lookup(env, link) {
+  return link.kind === "show" ? lookupPlaylist(env, link.id) : lookupVideo(env, link.id);
+}
+
+async function lookupVideo(env, id) {
+  const data = await yt(env, "videos", { part: "snippet,contentDetails,status", id });
+  const v = data.items?.[0];
+  if (!v) throw new UserError("We couldn't find that video. It may be private or removed.", 404);
+  const channel = v.snippet.channelTitle || "";
+  return {
+    kind: "video", id,
+    title: cleanTitle(v.snippet.title, [channel]),
+    description: shortDescription(v.snippet.description),
+    channel,
+    banner: id,
+    seconds: isoSeconds(v.contentDetails?.duration),
+    embeddable: v.status?.embeddable !== false,
+  };
+}
+
+async function lookupPlaylist(env, id) {
+  const pl = (await yt(env, "playlists", { part: "snippet,contentDetails", id })).items?.[0];
+  if (!pl) throw new UserError("We couldn't find that playlist. It may be private or removed.", 404);
+  const channel = pl.snippet.channelTitle || "";
+  const title = cleanTitle(pl.snippet.title, [channel]);
+
+  // Episodes, in playlist order (50 per page)
+  const raw = [];
+  let pageToken = "";
+  do {
+    const page = await yt(env, "playlistItems", { part: "snippet,status", playlistId: id, maxResults: "50", ...(pageToken && { pageToken }) });
+    for (const it of page.items || []) {
+      const vid = it.snippet?.resourceId?.videoId;
+      const t = it.snippet?.title || "";
+      if (!vid || t === "Private video" || t === "Deleted video" || it.status?.privacyStatus === "private") continue;
+      raw.push({ id: vid, rawTitle: t });
+    }
+    pageToken = page.nextPageToken || "";
+  } while (pageToken && raw.length < MAX_EPISODES);
+  if (!raw.length) throw new UserError("That playlist has no videos we can show.", 404);
+  const eps = raw.slice(0, MAX_EPISODES);
+
+  // Lengths (50 videos per request)
+  const secs = {};
+  for (let i = 0; i < eps.length; i += 50) {
+    const ids = eps.slice(i, i + 50).map((e) => e.id).join(",");
+    const data = await yt(env, "videos", { part: "contentDetails", id: ids });
+    for (const v of data.items || []) secs[v.id] = isoSeconds(v.contentDetails?.duration);
+  }
+
+  const names = [title, channel, pl.snippet.title];
+  return {
+    kind: "show", id, title, channel,
+    description: shortDescription(pl.snippet.description),
+    banner: eps[0].id,
+    episodes: eps.map((e) => ({ id: e.id, title: cleanTitle(e.rawTitle, names), seconds: secs[e.id] || 0 })),
+  };
+}
+
+// What the Parents page shows before adding
+function summary(it) {
+  return {
+    kind: it.kind, id: it.id, title: it.title, description: it.description, channel: it.channel,
+    banner: it.banner, seconds: it.seconds || 0, embeddable: it.embeddable !== false,
+    episodes: it.kind === "show" ? it.episodes.length : undefined,
+  };
+}
+
+// ---------- Tidying YouTube text ----------
+const SPLIT = /\s+\|\s+|\||[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B50}]+/u;
+const JUNK = /^(full episodes?|episodes?|new episodes?|kids cartoons?|kids cartoon show|cartoons? for (kids|children)|kids movies|videos? for kids|kids videos?|hd|4k|compilation|official|season \d+.*|seasons? \d+.*|s\d+\s*e\d+.*|episode \d+.*)$/i;
+
+function cleanTitle(t, names = []) {
+  const lower = names.filter(Boolean).map((n) => n.toLowerCase().trim());
+  const parts = String(t || "")
+    .split(SPLIT)
+    .map((p) => p.replace(/\bfull episodes?\b/gi, "").replace(/\s+/g, " ").trim().replace(/^[-–—:,\s]+|[-–—:,\s]+$/g, ""))
+    .filter((p) => /[\p{L}\p{N}]/u.test(p));
+  const good = parts.filter((p) => !JUNK.test(p) && !lower.includes(p.toLowerCase()));
+  return (good[0] || parts[0] || String(t || "").trim() || "Untitled").slice(0, 120);
+}
+
+function shortDescription(d) {
+  const text = String(d || "")
+    .replace(/https?:\/\/\S+|www\.\S+/gi, " ")      // links
+    .replace(/(^|\s)[#@][\w.-]+/g, " ")              // hashtags and @handles
+    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
+    .split(/\n+/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter((l) => /[\p{L}]{2}/u.test(l))
+    .map((l) => (/[.!?…]$/.test(l) ? l : l + "."))   // a line without a full stop still ends a sentence
+    .join(" ");
+  if (!text) return "";
+  const sentences = (text.match(/[^.!?]+[.!?]+(?=\s|$)/g) || [text])
+    .map((s) => s.trim())
+    .filter((s) => !/subscribe|copyright|©|all rights reserved|follow us|click here|watch more|check out/i.test(s));
+  let out = "";
+  for (const s of sentences) {
+    if (out && (out + " " + s).length > 200) break;
+    out += (out ? " " : "") + s;
+    if (out.length > 90) break;
+  }
+  out = out.trim();
+  if (out.length > 220) out = out.slice(0, 217).replace(/\s+\S*$/, "") + "…";
+  return out;
+}
+
+function cleanName(t) {
+  return String(t || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function isoSeconds(iso) {
+  const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || "");
+  if (!m) return 0;
+  return (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0);
+}
+
+// ---------- Helpers ----------
+class UserError extends Error {
+  constructor(message, status = 400) { super(message); this.status = status; }
+}
+
+async function body(request) {
+  const text = await request.text();
+  if (text.length > 10_000) throw new UserError("That's too long.");
+  try { return JSON.parse(text || "{}"); } catch { throw new UserError("Bad request."); }
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}

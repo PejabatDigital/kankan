@@ -66,14 +66,23 @@
       <div class="meta">${esc(v.channel)}</div>
     </a>`;
 
-  main.innerHTML =
+  function empty() {
+    return `<div class="empty"><h2>Nothing to watch yet</h2><p>Ask a grown-up to add some shows and videos.</p><a class="btn btn-dark" href="parents.html">Go to Parents</a></div>`;
+  }
+
+  function render() {
+    if (!KK.SHOWS.length && !KK.VIDEOS.length) { main.innerHTML = empty(); return; }
+    main.innerHTML =
     banner() +
     row("continue", "Continue Watching", KK.continueWatching().map(continueCard)) +
-    row("shows", "Shows", KK.SHOWS.map(showCard)) +
+    row("shows", "Shows", KK.SHOWS.filter((s) => s.episodes.length).map(showCard)) +
     row("videos", "Videos", KK.VIDEOS.map(videoCard));
 
-  main.querySelectorAll(".row-section").forEach(KK.enableRowArrows);
+    main.querySelectorAll(".row-section").forEach(KK.enableRowArrows);
 
-  // Header links to #shows / #videos land on the right row
-  if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+    // Header links to #shows / #videos land on the right row
+    if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+  }
+
+  KK.load().then(render, () => KK.loadError(main));
 })();

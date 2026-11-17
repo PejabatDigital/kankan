@@ -4,7 +4,7 @@
   KK.renderHeader(KK.param("show") ? "shows" : "videos");
 
   const $ = (id) => document.getElementById(id);
-  const show = KK.findShow(KK.param("show"));
+  let show = null; // filled in once the library has loaded
   let videoId = KK.param("v");
   let player = null;
   let ended = false;
@@ -121,7 +121,11 @@
     document.getElementById("watch").innerHTML = `<div class="empty"><p>No video picked.</p><a class="btn btn-dark" href="index.html">Back to Home</a></div>`;
     return;
   }
-  render();
+  // Show the page text once the library is here. The player doesn't need to wait for it.
+  KK.load().then(
+    () => { show = KK.findShow(KK.param("show")); render(); },
+    () => render()
+  );
 
   // ---------- YouTube player ----------
   window.onYouTubeIframeAPIReady = function () {

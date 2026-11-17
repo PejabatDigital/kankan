@@ -1,7 +1,33 @@
 // KanKan — shared helpers used by every page.
 (function () {
-  const SHOWS = window.KANKAN_SHOWS || [];
-  const VIDEOS = window.KANKAN_VIDEOS || [];
+  // The library comes from the server (/api/library). Call KK.load() before using it.
+  let SHOWS = [];
+  let VIDEOS = [];
+  async function load() {
+    const r = await fetch("/api/library", { cache: "no-store" });
+    if (!r.ok) throw new Error("library " + r.status);
+    const data = await r.json();
+    SHOWS = data.shows || [];
+    VIDEOS = data.videos || [];
+  }
+
+  // Calls the server and turns its { error } replies into readable messages.
+  async function api(path, { method = "GET", body } = {}) {
+    let r;
+    try {
+      r = await fetch(path, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    } catch {
+      throw new Error("Can't reach KanKan. Check the internet connection and try again.");
+    }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+    return data;
+  }
+
+  // Shown when the library can't be loaded
+  function loadError(main) {
+    main.innerHTML = `<div class="empty"><p>KanKan couldn't load the library just now.</p><button class="btn btn-dark" type="button" onclick="location.reload()">Try again</button></div>`;
+  }
 
   // ---------- Small helpers ----------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -94,7 +120,7 @@
       const p = all[ep.id];
       if (p && (!best || p.at > best.at)) best = { show, at: p.at };
     }));
-    return best ? best.show : SHOWS[0];
+    return best ? best.show : SHOWS[0] || null;
   }
 
   // ---------- Header ----------
@@ -109,7 +135,7 @@
         ${link("index.html#shows", "Shows", "shows")}
         ${link("index.html#videos", "Videos", "videos")}
       </nav>
-      <button class="parents" type="button" title="Parent area — coming in Phase 2" aria-label="Parents">${ICON.lock}<span class="word">Parents</span></button>`;
+      <a class="parents" href="parents.html" aria-label="Parents">${ICON.lock}<span class="word">Parents</span></a>`;
   }
 
   // ---------- Sideways rows: arrow buttons for mouse users ----------
@@ -131,7 +157,9 @@
   }
 
   window.KK = {
-    SHOWS, VIDEOS, esc, param, thumbImg, minutes, watchUrl, showUrl, ICON,
+    get SHOWS() { return SHOWS; },
+    get VIDEOS() { return VIDEOS; },
+    load, api, loadError, esc, param, thumbImg, minutes, watchUrl, showUrl, ICON,
     findShow, findVideo, getProgress, saveProgress, fraction, inProgress,
     resumePoint, continueWatching, lastWatchedShow, renderHeader, enableRowArrows,
   };

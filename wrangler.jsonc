@@ -3,8 +3,26 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "kankann",
+  "main": "src/index.js",
   "compatibility_date": "2026-11-01",
+
+  // The website. Files are served straight from public/; only /api/* runs the Worker code.
   "assets": {
-    "directory": "./public"
-  }
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // The library database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kankan",
+      "database_id": "8fd0cf05-b917-4bfe-b96a-8bbaa9f4e965"
+    }
+  ],
+
+  "observability": { "enabled": true }
+
+  // Secret (set in the Cloudflare dashboard, never here): YOUTUBE_API_KEY
 }

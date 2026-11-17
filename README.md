@@ -15,15 +15,25 @@ Plain HTML, CSS and JavaScript. No framework, no build step.
 - `index.html`: Home (banner, Continue Watching, Shows, Videos)
 - `show.html?id=<show>`: Show page, all episodes in playlist order
 - `watch.html?v=<videoId>&show=<show>`: Watch screen (YouTube embedded player)
+- `parents.html`: Parents area (maths question, then add / remove / refresh)
 
 ## Run locally
-The YouTube player doesn't work from a `file://` address, so serve the folder:
+Needs Node.js. Runs the Worker with a local copy of the database:
 
 ```bash
-python3 -m http.server 8788 --directory public
+npx wrangler@4 dev --port 8788
 ```
 
-Then open http://127.0.0.1:8788
+Then open http://127.0.0.1:8788. For YouTube lookups, create a `.dev.vars` file (never committed) with `YOUTUBE_API_KEY=...`.
+
+## API
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/api/library` | All shows (with episodes) and videos |
+| POST | `/api/preview` | `{ url }` → what a YouTube link points to |
+| POST | `/api/items` | `{ url, title? }` → add it |
+| DELETE | `/api/items/:id` | Remove a show or video |
+| POST | `/api/items/:id/refresh` | Re-read a show's episodes from YouTube |
 
 ## Deploy
 Cloudflare Worker `kankann`, connected to this repo. Every push to `main` goes live (`npx wrangler deploy`, settings in `wrangler.jsonc`).
