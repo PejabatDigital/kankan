@@ -20,6 +20,7 @@
 - Uses YouTube's official embedded player (YouTube IFrame Player API).
 - Never hide, cover or remove YouTube's ads, logo or controls.
 - No "Sign in with Google" for now. Playback relies on whatever YouTube account is signed in on that device's browser.
+- No auto-play: when an episode ends, the "Up next" card is highlighted and the family taps "Play next" (decided 2026-11-17).
 - Some creators turn off embedding. If a video can't play in KanKan, show a friendly message with a link to open it on YouTube.
 
 ## Screens
@@ -63,7 +64,6 @@
 
 ## Still to decide
 - Whether to support YouTube channels later
-- Whether the next episode plays automatically when one ends (currently: no, the "Up next" card is highlighted)
 
 ## How to work with Amin
 - Discuss before building. Don't get ahead of him.
