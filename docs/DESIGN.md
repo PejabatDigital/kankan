@@ -19,6 +19,20 @@ Plain, bright, white. No brand colour: the YouTube thumbnails provide all the co
 
 Only light theme. (A dark version was mocked up and not chosen.)
 
+## App icon (agreed 2026-11-17)
+A friendly TV: yellow TV, cream screen, two eyes and a smile (the eyes = 看看, "look, look"), three yellow "shine" lines at the top right, on a blue tile. No antennae (too close to Bilibili's logo) and no red play button (too close to YouTube Kids).
+
+| Colour | Value |
+|---|---|
+| Blue (tile) | `#1F6FEB` |
+| Yellow (TV, shine) | `#FFC531` |
+| Cream (screen) | `#FFF6DF` |
+| Navy (face) | `#1B2A4A` |
+
+These are the only brand colours so far. The rest of the site stays black and white until colour is introduced on purpose.
+
+Sources in `docs/brand/`: `icon.svg` (rounded tile, used as the browser icon), `icon-square.svg` (iPhone/iPad home screen, which rounds the corners itself), `icon-maskable.svg` (Android, mark kept inside the safe zone), `icon-small.svg` (bolder, no shine, for 16 px). The PNGs and `favicon.ico` in `public/` are made from these.
+
 ## Type
 - Font: system font stack: `-apple-system, "SF Pro Text", "Helvetica Neue", Arial, "PingFang SC", sans-serif`. No web fonts.
 - Logo: **KanKan** 25px bold (letter-spacing -0.03em) + 看看 21px regular in `--muted`.

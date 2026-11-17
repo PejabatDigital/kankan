@@ -47,6 +47,7 @@
 - Bright, happy colour palette, but **not kiddish**: no playful, rounded or cartoon fonts. It should feel polished and grown-up, just cheerful.
 - Netflix-style layout (rows of cards), with its own identity. Do not copy Netflix's look, colours or logo.
 - Logo uses both "KanKan" and 看看.
+- **App icon (agreed 2026-11-17):** friendly yellow TV with a face on a blue tile. See `docs/DESIGN.md` → App icon. Blue/yellow will be brought into the rest of the app later, on purpose.
 - Use the frontend-design skill for all UI work.
 - Process: mock up the screens first → agree the look → save it as a design system → build following that system.
 - **Look agreed (2026-11-17):** plain light/white theme. Follow `docs/DESIGN.md` for all UI. Mockups are in `docs/mockups/`.
