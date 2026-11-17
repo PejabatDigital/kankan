@@ -24,12 +24,18 @@
 - Some creators turn off embedding. If a video can't play in KanKan, show a friendly message with a link to open it on YouTube.
 
 ## Screens
-1. **Home:** rows of cards (e.g. Continue Watching, Shows, Videos).
+1. **Home:** an age switcher at the top (All · Baby · Preschool · Early Primary · Upper Primary), remembered per device. "All" shows Continue Watching then a row per age group (plus "Not sorted yet"); one age shows Continue Watching for that age then a row per category.
 2. **Show page:** the playlist's banner, then its episode list.
 3. **Watch screen:** the YouTube player, plus "next episode" when watching a playlist.
 4. **Parent area:** add and remove videos and playlists. It is protected by a grown-up maths question (e.g. "What is 14 × 6?") so the kids can't change the library. Decided 2026-11-17: maths question only, no PIN or secret. Amin accepts the risk that a stranger who finds the address could change the library. Answering the question unlocks Parents only until you leave the Parents page.
 
 ## Features
+- **Tags (added 2026-11-17).** Every show and video has:
+  - **Age groups** (one or more, required): Baby 0–2, Preschool 3–5, Early Primary 6–8, Upper Primary 9–12. Up to 12 years old only. Never call them "kids".
+  - **Categories** (any): Cartoons, Learning, Songs & Music, Stories, Nature & Science, Arts & Crafts.
+  - **Language** (any): English, Malay, Chinese.
+  - Shows also have **episode order** (as on YouTube, or reversed) and a **cover picture** (chosen from the episodes).
+  - Set when adding in Parents, and changed with **Edit**. Tag ids live in `src/index.js` and their labels in `public/js/app.js`.
 - **Show descriptions:** taken from YouTube and trimmed to a sentence or two.
 - **New episodes:** a parent taps **Refresh** on a show in the Parents area (no automatic checking).
 - **Continue Watching:** remembers where the family stopped in each video and episode, and shows it as a row on Home.

@@ -47,6 +47,11 @@ Only light theme. (A dark version was mocked up and not chosen.)
 - **Watch screen:** big YouTube player left. Right column: "Next episode" card with a black "Play next" button, then a "Coming up" list. Under the player: "Can't play here? Watch on YouTube" link.
 - **Back link:** chevron plus the name of where you came from.
 
+- **Chip:** pill button, 40px tall, 1px `#D9D9DE` border, white. Selected = black fill, white text. Used for tags in Parents and the age switcher on Home. An age chip shows its range in muted text ("Preschool 3–5").
+- **Age switcher (Home):** a row of chips under the header (All, then the four age groups). Scrolls sideways on phone.
+- **Cover picker (Parents):** a sideways strip of episode thumbnails; the chosen one has a 3px black outline.
+- **Tag status:** an item with no age group shows a small "Not sorted yet" pill (amber `#FFF4D6` / `#8A5A00`), the only non-grey colour besides thumbnails and error red `#B42318`.
+
 ## Phone and iPad (proposed, not yet mocked up)
 - Side padding drops to 16px on phone.
 - Rows scroll sideways with a swipe. Cards about 70% of screen width on phone.

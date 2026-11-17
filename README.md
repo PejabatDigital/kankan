@@ -15,7 +15,7 @@ Plain HTML, CSS and JavaScript. No framework, no build step.
 - `index.html`: Home (banner, Continue Watching, Shows, Videos)
 - `show.html?id=<show>`: Show page, all episodes in playlist order
 - `watch.html?v=<videoId>&show=<show>`: Watch screen (YouTube embedded player)
-- `parents.html`: Parents area (maths question, then add / remove / refresh)
+- `parents.html`: Parents area (maths question, then add / edit tags / remove / refresh)
 
 ## Run locally
 Needs Node.js. Runs the Worker with a local copy of the database:
@@ -31,7 +31,8 @@ Then open http://127.0.0.1:8788. For YouTube lookups, create a `.dev.vars` file 
 |---|---|---|
 | GET | `/api/library` | All shows (with episodes), videos and watch progress |
 | POST | `/api/preview` | `{ url }` → what a YouTube link points to |
-| POST | `/api/items` | `{ url, title? }` → add it |
+| POST | `/api/items` | `{ url, title?, ages, categories?, languages?, order?, cover? }` → add it |
+| PATCH | `/api/items/:id` | `{ title?, ages?, categories?, languages?, order?, cover? }` → edit it |
 | DELETE | `/api/items/:id` | Remove a show or video |
 | POST | `/api/items/:id/refresh` | Re-read a show's episodes from YouTube |
 | POST | `/api/progress` | `{ items: [{ v, show, t, d, done }] }` → save where the family stopped |
