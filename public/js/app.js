@@ -53,6 +53,35 @@
     lock: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
   };
 
+  // ---------- Tags ----------
+  // The ids must match the lists in src/index.js.
+  const TAGS = {
+    ages: [
+      { id: "baby", label: "Baby", range: "0–2" },
+      { id: "preschool", label: "Preschool", range: "3–5" },
+      { id: "early-primary", label: "Early Primary", range: "6–8" },
+      { id: "upper-primary", label: "Upper Primary", range: "9–12" },
+    ],
+    categories: [
+      { id: "cartoons", label: "Cartoons" },
+      { id: "learning", label: "Learning" },
+      { id: "songs-music", label: "Songs & Music" },
+      { id: "stories", label: "Stories" },
+      { id: "nature-science", label: "Nature & Science" },
+      { id: "arts-crafts", label: "Arts & Crafts" },
+    ],
+    languages: [
+      { id: "en", label: "English" },
+      { id: "ms", label: "Malay" },
+      { id: "zh", label: "Chinese" },
+    ],
+  };
+  const tagLabel = (group, id) => (TAGS[group].find((t) => t.id === id) || {}).label || id;
+  // "Preschool, Early Primary"
+  const tagLabels = (group, ids) => TAGS[group].filter((t) => (ids || []).includes(t.id)).map((t) => t.label).join(", ");
+  // Language worth mentioning on a card (English is the default, so it isn't shown)
+  const languageNote = (it) => (it.languages || []).filter((l) => l !== "en").map((l) => tagLabel("languages", l)).join(", ");
+
   // ---------- Library lookups ----------
   const findShow = (id) => SHOWS.find((s) => s.id === id) || null;
   const findVideo = (id) => VIDEOS.find((v) => v.id === id) || null;
@@ -156,14 +185,8 @@
   function renderHeader(active) {
     const el = document.querySelector(".site-header");
     if (!el) return;
-    const link = (href, label, key) => `<a href="${href}"${active === key ? ' class="on" aria-current="page"' : ""}>${label}</a>`;
     el.innerHTML = `
       <a class="logo" href="index.html" aria-label="KanKan home"><b>KanKan</b><span lang="zh">看看</span></a>
-      <nav class="nav" aria-label="Main">
-        ${link("index.html", "Home", "home")}
-        ${link("index.html#shows", "Shows", "shows")}
-        ${link("index.html#videos", "Videos", "videos")}
-      </nav>
       <a class="parents" href="parents.html" aria-label="Parents">${ICON.lock}<span class="word">Parents</span></a>`;
   }
 
@@ -188,7 +211,7 @@
   window.KK = {
     get SHOWS() { return SHOWS; },
     get VIDEOS() { return VIDEOS; },
-    load, api, loadError, esc, param, thumbImg, minutes, watchUrl, showUrl, ICON,
+    load, api, loadError, esc, TAGS, tagLabel, tagLabels, languageNote, param, thumbImg, minutes, watchUrl, showUrl, ICON,
     findShow, findVideo, getProgress, saveProgress, fraction, inProgress,
     resumePoint, continueWatching, lastWatchedShow, renderHeader, enableRowArrows,
   };

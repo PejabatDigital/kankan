@@ -47,7 +47,7 @@
       <a class="back" href="index.html">${ICON.back}Home</a>
       <section class="show-hero">
         <div class="text">
-          <div class="label">Show · ${show.episodes.length} episodes</div>
+          <div class="label">${esc([KK.tagLabels("ages", show.ages), `${show.episodes.length} episodes`, KK.tagLabels("languages", show.languages)].filter(Boolean).join(" · "))}</div>
           <h1>${esc(show.title)}</h1>
           <p>${esc(show.description)}</p>
           <div class="btns">
@@ -58,7 +58,7 @@
         <div class="thumb">${thumbImg(show.banner || first.id, { big: true, lazy: false, alt: show.title })}</div>
       </section>
       <section class="episodes">
-        <div class="episodes-head"><h2>Episodes</h2><span class="meta">${show.episodes.length} episodes · in playlist order</span></div>
+        <div class="episodes-head"><h2>Episodes</h2><span class="meta">${show.episodes.length} episodes</span></div>
         ${show.episodes.map(episodeRow).join("")}
       </section>`;
   }
