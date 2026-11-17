@@ -73,9 +73,10 @@
     const done = d - t < 20; // within 20 seconds of the end counts as watched
     KK.saveProgress(videoId, { t: Math.floor(t), d: Math.floor(d), show: show ? show.id : null, done, ...extra });
   }
+  // Save every 15 seconds while playing, plus on pause, end, switching video and leaving the page.
   setInterval(() => {
     if (player && player.getPlayerState && player.getPlayerState() === YT.PlayerState.PLAYING) save();
-  }, 5000);
+  }, 15000);
   document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
   window.addEventListener("pagehide", () => save());
 
@@ -121,14 +122,17 @@
     document.getElementById("watch").innerHTML = `<div class="empty"><p>No video picked.</p><a class="btn btn-dark" href="index.html">Back to Home</a></div>`;
     return;
   }
-  // Show the page text once the library is here. The player doesn't need to wait for it.
+  // The player starts once both the library (with where we stopped) and YouTube's script are ready.
+  let libraryReady = false, youtubeReady = false;
   KK.load().then(
     () => { show = KK.findShow(KK.param("show")); render(); },
     () => render()
-  );
+  ).finally(() => { libraryReady = true; startPlayer(); });
+  window.onYouTubeIframeAPIReady = () => { youtubeReady = true; startPlayer(); };
 
   // ---------- YouTube player ----------
-  window.onYouTubeIframeAPIReady = function () {
+  function startPlayer() {
+    if (!libraryReady || !youtubeReady || player) return;
     player = new YT.Player("player", {
       videoId,
       playerVars: { playsinline: 1, rel: 0, start: startAt(videoId), origin: location.origin },
@@ -145,5 +149,5 @@
         onError(e) { showBlocked(e.data); },
       },
     });
-  };
+  }
 })();

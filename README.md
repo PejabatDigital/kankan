@@ -29,11 +29,12 @@ Then open http://127.0.0.1:8788. For YouTube lookups, create a `.dev.vars` file 
 ## API
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/api/library` | All shows (with episodes) and videos |
+| GET | `/api/library` | All shows (with episodes), videos and watch progress |
 | POST | `/api/preview` | `{ url }` → what a YouTube link points to |
 | POST | `/api/items` | `{ url, title? }` → add it |
 | DELETE | `/api/items/:id` | Remove a show or video |
 | POST | `/api/items/:id/refresh` | Re-read a show's episodes from YouTube |
+| POST | `/api/progress` | `{ items: [{ v, show, t, d, done }] }` → save where the family stopped |
 
 ## Deploy
 Cloudflare Worker `kankann`, connected to this repo. Every push to `main` goes live (`npx wrangler deploy`, settings in `wrangler.jsonc`).

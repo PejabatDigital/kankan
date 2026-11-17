@@ -9,6 +9,8 @@
     const data = await r.json();
     SHOWS = data.shows || [];
     VIDEOS = data.videos || [];
+    PROGRESS = data.progress || {};
+    await migrateLocalProgress();
   }
 
   // Calls the server and turns its { error } replies into readable messages.
@@ -56,19 +58,46 @@
   const findVideo = (id) => VIDEOS.find((v) => v.id === id) || null;
 
   // ---------- Watch progress ----------
-  // Phase 1: kept in this browser only (localStorage).
-  // Phase 3 moves this into the database so every device shares it.
-  const KEY = "kankan.progress.v1";
-  function loadAll() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }
-  }
-  function getProgress(videoId) { return loadAll()[videoId] || null; }
+  // Saved in the database, so every device shares one Continue Watching.
+  // PROGRESS is filled by load(); saveProgress() updates it and tells the server.
+  let PROGRESS = {};
+  function loadAll() { return PROGRESS; }
+  function getProgress(videoId) { return PROGRESS[videoId] || null; }
   function saveProgress(videoId, data) {
+    const p = { ...(PROGRESS[videoId] || {}), ...data, at: Date.now() };
+    PROGRESS[videoId] = p;
+    sendProgress([{ v: videoId, show: p.show || null, t: p.t || 0, d: p.d || 0, done: !!p.done }]);
+  }
+  function sendProgress(items) {
+    // keepalive lets the save finish even when the page is closing
+    return fetch("/api/progress", {
+      method: "POST", keepalive: true,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ items }),
+    }).catch(() => { /* offline: the next save will catch up */ });
+  }
+
+  // Before Phase 3, progress lived in each browser. Hand it over to the server once, then forget it.
+  const OLD_KEY = "kankan.progress.v1";
+  async function migrateLocalProgress() {
+    let local;
+    try { local = JSON.parse(localStorage.getItem(OLD_KEY)); } catch { return; }
+    if (!local || typeof local !== "object") return;
+    const items = [];
+    for (const [v, p] of Object.entries(local)) {
+      if (!p || (PROGRESS[v] && PROGRESS[v].at >= (p.at || 0))) continue;
+      // Phase 1 used made-up show names ("kipper"); look up the real show instead.
+      const show = SHOWS.find((s) => s.episodes.some((e) => e.id === v));
+      PROGRESS[v] = { ...p, show: show ? show.id : null };
+      items.push({ v, show: show ? show.id : null, t: p.t || 0, d: p.d || 0, done: !!p.done });
+    }
     try {
-      const all = loadAll();
-      all[videoId] = { ...(all[videoId] || {}), ...data, at: Date.now() };
-      localStorage.setItem(KEY, JSON.stringify(all));
-    } catch { /* storage blocked (e.g. private mode): carry on without saving */ }
+      if (items.length) {
+        const r = await sendProgress(items);
+        if (!r || !r.ok) return; // keep the old copy and try again next time
+      }
+      localStorage.removeItem(OLD_KEY);
+    } catch { /* storage blocked: nothing to hand over */ }
   }
   // 0..1 watched, or 1 if finished
   function fraction(p) {

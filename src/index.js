@@ -5,6 +5,7 @@
 //   POST   /api/items                { url, title? } -> add it to KanKan
 //   DELETE /api/items/:id            remove a show or video
 //   POST   /api/items/:id/refresh    re-read a show's episodes from YouTube
+//   POST   /api/progress             { items: [{ v, show, t, d, done }] } -> save where the family stopped
 //
 // The YouTube key lives in the Cloudflare secret YOUTUBE_API_KEY and never leaves the server.
 
@@ -50,9 +51,29 @@ async function route(request, env, url) {
     return json({ ok: true, item: summary({ ...found, title: name }) }, 201);
   }
 
+  if (p === "/api/progress" && m === "POST") {
+    const b = await body(request);
+    const list = (Array.isArray(b.items) ? b.items : [b]).slice(0, 200);
+    const now = Date.now();
+    const stmts = [];
+    for (const x of list) {
+      if (!/^[\w-]{11}$/.test(x?.v || "")) continue;
+      const t = clampInt(x.t, 0, 86400), d = clampInt(x.d, 0, 86400);
+      const show = /^[\w-]{10,64}$/.test(x.show || "") ? x.show : null;
+      stmts.push(env.DB.prepare(
+        `INSERT INTO progress (video_id, show_id, t, d, done, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(video_id) DO UPDATE SET show_id = excluded.show_id, t = excluded.t, d = excluded.d,
+           done = excluded.done, updated_at = excluded.updated_at`
+      ).bind(x.v, show, t, d, x.done ? 1 : 0, now));
+    }
+    if (stmts.length) await env.DB.batch(stmts);
+    return json({ ok: true, saved: stmts.length, at: now });
+  }
+
   const item = p.match(/^\/api\/items\/([\w-]{11,64})(\/refresh)?$/);
   if (item && m === "DELETE" && !item[2]) {
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM progress WHERE show_id = ? OR video_id = ?").bind(item[1], item[1]),
       env.DB.prepare("DELETE FROM episodes WHERE show_id = ?").bind(item[1]),
       env.DB.prepare("DELETE FROM items WHERE id = ?").bind(item[1]),
     ]);
@@ -96,15 +117,26 @@ async function ensureSchema(db) {
       seconds INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (show_id, position)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS progress (
+      video_id TEXT PRIMARY KEY,         -- where the family stopped in each video / episode
+      show_id TEXT,
+      t INTEGER NOT NULL DEFAULT 0,      -- seconds watched
+      d INTEGER NOT NULL DEFAULT 0,      -- video length in seconds
+      done INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    )`),
   ]);
   schemaReady = true;
 }
 
 async function library(db) {
-  const [items, eps] = await db.batch([
+  const [items, eps, prog] = await db.batch([
     db.prepare("SELECT * FROM items ORDER BY added_at ASC"),
     db.prepare("SELECT show_id, video_id, title, seconds FROM episodes ORDER BY show_id, position"),
+    db.prepare("SELECT * FROM progress"),
   ]);
+  const progress = {};
+  for (const r of prog.results) progress[r.video_id] = { t: r.t, d: r.d, show: r.show_id, done: !!r.done, at: r.updated_at };
   const byShow = {};
   for (const e of eps.results) (byShow[e.show_id] ||= []).push({ id: e.video_id, title: e.title, seconds: e.seconds });
   const shows = [], videos = [];
@@ -115,7 +147,7 @@ async function library(db) {
       videos.unshift({ id: it.id, title: it.title, channel: it.channel, seconds: it.seconds }); // newest first
     }
   }
-  return { shows, videos };
+  return { shows, videos, progress };
 }
 
 async function saveItem(db, it, addedAt) {
@@ -299,6 +331,11 @@ function shortDescription(d) {
   out = out.trim();
   if (out.length > 220) out = out.slice(0, 217).replace(/\s+\S*$/, "") + "…";
   return out;
+}
+
+function clampInt(n, lo, hi) {
+  n = Math.floor(Number(n) || 0);
+  return Math.min(hi, Math.max(lo, n));
 }
 
 function cleanName(t) {

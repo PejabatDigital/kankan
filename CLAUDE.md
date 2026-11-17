@@ -55,14 +55,14 @@
   - `docs/`: design system and mockups. Not served on the website.
 - **Run locally:** `npx wrangler@4 dev --port 8788`, then open http://127.0.0.1:8788. Uses a local copy of the database. YouTube lookups need `.dev.vars` (git-ignored) containing `YOUTUBE_API_KEY=...`.
 - **Server side:** the Cloudflare Worker's own code, for the YouTube lookup and saving data.
-- **Database:** Cloudflare D1 `kankan` (binding `DB`), holding the library (tables `items` and `episodes`, created automatically by the Worker). Continue Watching progress moves here in Phase 3.
+- **Database:** Cloudflare D1 `kankan` (binding `DB`). Tables `items` and `episodes` (the library) and `progress` (where the family stopped in each video), all created automatically by the Worker.
 - **YouTube Data API key:** Google Cloud project `Kankan`, key restricted to YouTube Data API v3. Stored as the Cloudflare secret `YOUTUBE_API_KEY`. Never put it in front-end code or commit it to GitHub.
 - **Web address:** https://kankan.kasahkod.cc (also https://kankann.amindigital.workers.dev).
 
 ## Build phases
-- **Phase 1 (done 2026-11-17):** the screens (Home, Show page, Watch screen) using a hand-entered list of content (`public/js/library.js`), to get the look and feel right. Continue Watching is saved per browser (localStorage) until Phase 3.
+- **Phase 1 (done 2026-11-17):** the screens (Home, Show page, Watch screen), first with a hand-entered list of content, to get the look and feel right.
 - **Phase 2 (done 2026-11-17):** the parent area (`public/parents.html`) with paste-a-link, plus automatic YouTube lookup of title, thumbnail and playlist episodes. Server code in `src/index.js` (API under `/api/`). Playlists are capped at 500 episodes.
-- **Phase 3:** library and Continue Watching saved in the database, so every device sees the same thing.
+- **Phase 3 (done 2026-11-17):** Continue Watching saved in the database (`/api/progress`), so every device shares it. Saves every 15 seconds while playing, and on pause, end, switching video and leaving the page. Progress a device had saved locally in Phase 1 is handed over once, automatically.
 
 ## Still to decide
 - Whether to support YouTube channels later
